@@ -2,7 +2,6 @@
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 
 void main(int argc, char *argv[])
 {
@@ -103,33 +102,34 @@ void main(int argc, char *argv[])
 		}
 	}
 
-	MPI_Finalize();
-
-	for (int j = 0; j < columns; j++) sum[j] = 0;
-
-	std::cout << std::endl;
 	//sequential program
 
-	time_t start, end;
-	
-	time(&start);
+	if (rank == 0) {
+		for (int j = 0; j < columns; j++) sum[j] = 0;
 
-	for (int i = 0; i < rows; i++)
-		for (int j = 0; j < columns; j++)
-		{
-			sum[i] += matrix[i][j];
+		std::cout << std::endl;
+		//sequential program
+
+		times = MPI_Wtime();
+
+		for (int i = 0; i < rows; i++)
+			for (int j = 0; j < columns; j++)
+			{
+				sum[i] += matrix[i][j];
+			}
+	
+		std::cout << "Time = " << MPI_Wtime() - times << std::endl;
+
+		for (int i = 0; i < rows; i++) {
+			std::cout << "sum2[" << i << "] = " << sum[i] << std::endl;
 		}
 
-	time(&end);
-	double seconds = difftime(end, start);
-	std::cout << "sequential program time = " << seconds << std::endl;
-	
-	for (int i = 0; i < rows; i++) {
-		std::cout << "sum2[" << i << "] = " << sum[i] << std::endl;
+
+		for (int i = 0; i < rows; i++) {
+			delete[] matrix[i];
+		}
+		delete[] matrix, sum, recv_row;
 	}
 
-	for (int i = 0; i < rows; i++) {
-		delete[] matrix[i];
-	}
-	delete[] matrix, sum, recv_row;
+	MPI_Finalize();
 }
