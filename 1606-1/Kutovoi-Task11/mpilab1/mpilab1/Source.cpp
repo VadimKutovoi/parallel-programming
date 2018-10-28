@@ -2,103 +2,120 @@
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+
+void generate_matr(double* matr,int row_c, int column_c) {
+	for (int i = 0; i < row_c * column_c; i++) {
+		matr[i] = rand() % 10;
+	}
+}
+
+void print_matr(double* matr, int row_c, int column_c) {
+	for (int i = 1; i < row_c * column_c + 1; i++) {
+		std::cout << matr[i - 1] << " ";
+		if (i%column_c == 0) {
+			std::cout << std::endl;
+		}
+	}
+}
+
 
 void main(int argc, char *argv[])
 {
 	//parallel program
 	MPI_Init(&argc, &argv);
 
-	int rank, size, rows = 5, columns = 5;
-	int **matrix = NULL, *recv_row = NULL, *sum = NULL;
+	int rank, size, rows = 5, columns = 5, srows = 1, sumc = 0;
+	double *matrix = NULL, *recv_row = NULL, *sum = NULL, *lsum = NULL;
 	double times;
-	MPI_Status status;
+
+	int *sendcounts, *displs, *recvcounts;
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+	int rem = 0;
+
 	if (rank == 0) {
-		std::cout << "Comm size = " << size << std::endl;
-		
-		std::cout << "Rows = ";
-		std::cin >> rows; 
-		
-		std::cout << "Columns = ";
-		std::cin >> columns;
+		if (argc == 2) {
+			columns = rows = atoi(argv[1]);
+		}
+		else {
+			rows = columns = size;
+		}
 
 		std::cout << "Generating matrix.." << std::endl;
 
-		matrix = new int*[rows];
-		sum = new int[rows];
+		matrix = new double[columns * rows];
+		sum = new double[rows];
 
-		for (int i = 0; i < rows; i++) {
-			matrix[i] = new int[columns];
-			sum[i] = 0;
-			for (int j = 0; j < columns; j++)
-				matrix[i][j] = i + j;
-		}
+		generate_matr(matrix, rows, columns);
+		//print_matr(matrix, rows, columns);
 
-		for (int i = 0; i < rows; i++)
-			for (int j = 0; j < columns; j++)
-			{
-				std::cout << matrix[i][j] << " ";
-				if (j == columns - 1) std::cout << std::endl;
-			}
+		srows = (rows / size) == 0 ? 1 : rows/size;
+		std::cout << "srows = " << srows << std::endl;
 
+		times = MPI_Wtime();
 	}
 
-	times = MPI_Wtime();
-	
 	MPI_Bcast(&rows, 1, MPI_INT, 0, MPI_COMM_WORLD);
 	MPI_Bcast(&columns, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	MPI_Bcast(&srows, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-	if (rank == 0) {
-		std::cout << "Starting MPI_Send..." << std::endl;
+	rem = (rows < size) ? 0 : rows % size;
+	sendcounts = new int[size];
+	recvcounts = new int[size];
+	displs = new int[size];
 
-		for (int i = 0; i < rows; i++) {
-			if (i%size != 0)
-				MPI_Send(matrix[i], columns, MPI_INT, i%size, i, MPI_COMM_WORLD);
-		}
-
-		std::cout << "Finished\n" << std::endl;
+	sendcounts[0] = columns * (srows + rem);
+	recvcounts[0] = srows + rem;
+	displs[0] = 0;
+	for (int i = 1; i < size; i++) {
+		sendcounts[i] = columns * srows;
+		displs[i] = displs[i - 1] + sendcounts[i - 1];
+		recvcounts[i] = srows;
 	}
+
+	recv_row = new double[sendcounts[rank]];
+
+	MPI_Scatterv(matrix, sendcounts, displs, MPI_DOUBLE, recv_row, sendcounts[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+	//for (int i = 0; i < sendcounts[rank]; i++) {
+	//	std::cout << recv_row[i] << " ";
+	//}
+	//std::cout << std::endl;
+
+	lsum = new double[sendcounts[rank]/columns];
+	for (int i = 0; i < sendcounts[rank] / columns; i++){
+		lsum[i] = 0;
+		for (int j = i * columns; j < sendcounts[rank]; j++) {
+			lsum[i] += recv_row[j];
+			if ((j + 1) % columns == 0) break;
+		}
+	}
+
+	//for (int i = 0; i < sendcounts[rank] / columns; i++)
+	//	std::cout << "rank " << rank << " lsum = " << lsum[i] << " ";
+	//std::cout << std::endl;
+
+	int *displs2 = new int[size] {0};
 	
-	if(rank != 0) {
-		recv_row = new int[columns];
-		for (int i = rank; i < rows; i += size) {
-			int row_sum = 0;
-
-			MPI_Recv(recv_row, columns, MPI_INT, 0, i, MPI_COMM_WORLD, &status);
-			std::cout << "Process " << rank << " recieved row" << std::endl;
-
-			for (int j = 0; j < columns; j++)
-				row_sum += recv_row[j];
-
-			MPI_Send(&row_sum, 1, MPI_INT, 0, i, MPI_COMM_WORLD);
-			std::cout << "Process " << rank << " sended row" << std::endl;
-		}
-	}
-	else {
-		for (int i = rank; i < rows; i += size)
-		{
-			for (int j = 0; j < columns; j++)
-			{
-				sum[i] += matrix[i][j];
-			}
-				
-		}
+	for (int i = 1; i < size; i++) {
+		displs2[i] = displs2[i - 1] + recvcounts[i - 1];
 	}
 
-	if (rank == 0) {
-		for (int i = 1; i < rows; i++) {
-			if (i%size != 0) {
-				MPI_Recv(&sum[i], 1, MPI_INT, MPI_ANY_SOURCE, i, MPI_COMM_WORLD, &status);				
-			}
-		}
+	//if (!rank) {
+	//	for (int i = 0; i < rows; i++) {
+	//		std::cout << "disp[" << i << "] = " << displs2[i] << std::endl;
+	//	}
+	//}
 
-		std::cout << "Time = " << MPI_Wtime() - times << std::endl;
-
+	MPI_Gatherv(lsum, sendcounts[rank]/columns, MPI_DOUBLE, sum, recvcounts, displs2, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	
+	if (!rank) {
+		std::cout << "Parallel time = " << MPI_Wtime() - times << std::endl;
 		for (int i = 0; i < rows; i++) {
-			std::cout << "sum[" << i << "] = " << sum[i] << std::endl;
+			std::cout << "sum[" << i << "] = " <<sum[i] << std::endl;
 		}
 	}
 
@@ -108,28 +125,26 @@ void main(int argc, char *argv[])
 		for (int j = 0; j < columns; j++) sum[j] = 0;
 
 		std::cout << std::endl;
-		//sequential program
 
 		times = MPI_Wtime();
 
-		for (int i = 0; i < rows; i++)
-			for (int j = 0; j < columns; j++)
-			{
-				sum[i] += matrix[i][j];
-			}
+		int i = 0;
+		for (int j = 0; j < columns * rows; j++) {
+			sum[i] += matrix[j];
+			if ((j + 1) % columns == 0) i++;
+		}
 	
-		std::cout << "Time = " << MPI_Wtime() - times << std::endl;
+		std::cout << "Sequental time = " << MPI_Wtime() - times << std::endl;
 
 		for (int i = 0; i < rows; i++) {
 			std::cout << "sum2[" << i << "] = " << sum[i] << std::endl;
 		}
 
-
-		for (int i = 0; i < rows; i++) {
-			delete[] matrix[i];
-		}
-		delete[] matrix, sum, recv_row;
+		delete[] matrix, sum;
 	}
+
+	MPI_Barrier(MPI_COMM_WORLD);
+	delete[] lsum, recv_row, displs2, displs, sendcounts, recvcounts;
 
 	MPI_Finalize();
 }
