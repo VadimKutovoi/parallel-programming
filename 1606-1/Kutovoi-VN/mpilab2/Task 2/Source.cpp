@@ -71,54 +71,50 @@ void main(int argc, char *argv[])
 				readyToRecieve = 0;
 			}
 			else {	
-				if (!index) {
-					if (request == WRITE_REQUEST) {
-						curWriterRank = status.MPI_SOURCE;
-						if (!rc) {
-							respond = 1;
-							MPI_Send(&respond, 1, MPI_INT, curWriterRank, SERVER, MPI_COMM_WORLD);
-							cout << "--------DATA OVERWRITE--------" << endl;
-							cout << "Process " << curWriterRank << " is writing" << endl;
-							MPI_Recv(&data, 1, MPI_INT, MPI_ANY_SOURCE, status.MPI_SOURCE, MPI_COMM_WORLD, &status);
-							cout << "data = " << data << endl;
-						}
-						else {
-							respond = 0;
-							MPI_Send(&respond, 1, MPI_INT, curWriterRank, SERVER, MPI_COMM_WORLD);
-							cout << "--------DATA OVERWRITE--------" << endl;
-							cout << "Process " << curWriterRank << " : ACCESS DENIED" << endl;
-						}
+				if (request == WRITE_REQUEST) {
+					curWriterRank = status.MPI_SOURCE;
+					if (!rc) {
+						respond = 1;
+						MPI_Send(&respond, 1, MPI_INT, curWriterRank, SERVER, MPI_COMM_WORLD);
+						cout << "--------DATA OVERWRITE--------" << endl;
+						cout << "Process " << curWriterRank << " is writing" << endl;
+						MPI_Recv(&data, 1, MPI_INT, MPI_ANY_SOURCE, status.MPI_SOURCE, MPI_COMM_WORLD, &status);
+						cout << "data = " << data << endl;
 					}
-
-					if (request == READ_REQUEST) {
-						cout << "------------------------------" << endl;
-						cout << "Process " << status.MPI_SOURCE << " reading..." << endl;
-						rc++;
-						MPI_Isend(&data, 1, MPI_INT, status.MPI_SOURCE, READ_REQUEST, MPI_COMM_WORLD, &request);
-						cout << "Server sent data to " << status.MPI_SOURCE << ", data = " << data << endl;
-						cout << "Current readers count : " << rc << endl;
+					else {
+						respond = 0;
+						MPI_Send(&respond, 1, MPI_INT, curWriterRank, SERVER, MPI_COMM_WORLD);
+						cout << "--------DATA OVERWRITE--------" << endl;
+						cout << "Process " << curWriterRank << " : ACCESS DENIED" << endl;
 					}
-
-					if (request == FINISH_READ) {
-						rc--;
-						cout << "------------------------------" << endl;
-						cout << "Process " << status.MPI_SOURCE << " finished reading " << endl;;
-						cout << "Current readers count : " << rc << endl;
-					}
-
-					if (request == TERMINATE_REQUEST) {
-						cout << "------------------------------" << endl;
-						cout << "Process " << status.MPI_SOURCE << " wants to terminate" << endl;
-						activeProcess--;
-						cout << "Active process : " << activeProcess << endl;
-					}
-					if (!activeProcess) {
-						cout << "SHUTTING DOWN..." << endl;
-						break;
-					}
-					readyToRecieve = 1;
 				}
+				if (request == READ_REQUEST) {
+					cout << "------------------------------" << endl;
+					cout << "Process " << status.MPI_SOURCE << " reading..." << endl;
+					rc++;
+					MPI_Isend(&data, 1, MPI_INT, status.MPI_SOURCE, READ_REQUEST, MPI_COMM_WORLD, &request);
+					cout << "Server sent data to " << status.MPI_SOURCE << ", data = " << data << endl;
+					cout << "Current readers count : " << rc << endl;
+				}
+				if (request == FINISH_READ) {
+					rc--;
+					cout << "------------------------------" << endl;
+					cout << "Process " << status.MPI_SOURCE << " finished reading " << endl;;
+					cout << "Current readers count : " << rc << endl;
+				}
+				if (request == TERMINATE_REQUEST) {
+					cout << "------------------------------" << endl;
+					cout << "Process " << status.MPI_SOURCE << " wants to terminate" << endl;
+					activeProcess--;
+					cout << "Active process : " << activeProcess << endl;
+				}
+				if (!activeProcess) {
+					cout << "SHUTTING DOWN..." << endl;
+					break;
+				}
+				readyToRecieve = 1;
 			}
+			
 		}
 	}
 
